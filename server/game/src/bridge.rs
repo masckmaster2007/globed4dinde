@@ -8,7 +8,7 @@ use std::{
 use esp::{size_of_types, ByteBuffer, ByteBufferExt, ByteBufferExtRead, ByteBufferExtWrite, ByteReader, DecodeError, DynamicSize, StaticSize};
 use globed_shared::{
     reqwest::{self, StatusCode},
-    GameServerBootData, SyncMutex, TokenIssuer, UserEntry, MAX_SUPPORTED_PROTOCOL, SERVER_MAGIC, SERVER_MAGIC_LEN,
+    GameServerBootData, ServerUserEntry, SyncMutex, TokenIssuer, MAX_SUPPORTED_PROTOCOL, SERVER_MAGIC, SERVER_MAGIC_LEN,
 };
 
 use crate::webhook::{self, *};
@@ -69,7 +69,9 @@ pub struct CentralBridge {
     // for performance reasons /shrug
     pub maintenance: AtomicBool,
     pub whitelist: AtomicBool,
-    pub webhook_present: AtomicBool,
+    pub admin_webhook_present: AtomicBool,
+    pub featured_webhook_present: AtomicBool,
+    pub room_webhook_present: AtomicBool,
 }
 
 impl CentralBridge {
@@ -88,7 +90,9 @@ impl CentralBridge {
             central_conf: SyncMutex::new(GameServerBootData::default()),
             maintenance: AtomicBool::new(false),
             whitelist: AtomicBool::new(false),
-            webhook_present: AtomicBool::new(false),
+            admin_webhook_present: AtomicBool::new(false),
+            featured_webhook_present: AtomicBool::new(false),
+            room_webhook_present: AtomicBool::new(false),
         }
     }
 
@@ -100,8 +104,16 @@ impl CentralBridge {
         self.whitelist.load(Ordering::Relaxed)
     }
 
-    pub fn has_webhook(&self) -> bool {
-        self.webhook_present.load(Ordering::Relaxed)
+    pub fn has_admin_webhook(&self) -> bool {
+        self.admin_webhook_present.load(Ordering::Relaxed)
+    }
+
+    pub fn has_featured_webhook(&self) -> bool {
+        self.featured_webhook_present.load(Ordering::Relaxed)
+    }
+
+    pub fn has_room_webhook(&self) -> bool {
+        self.room_webhook_present.load(Ordering::Relaxed)
     }
 
     pub async fn request_boot_data(&self) -> Result<GameServerBootData> {
@@ -157,7 +169,10 @@ impl CentralBridge {
     pub fn set_boot_data(&self, data: GameServerBootData) {
         self.maintenance.store(data.maintenance, Ordering::Relaxed);
         self.whitelist.store(data.whitelist, Ordering::Relaxed);
-        self.webhook_present.store(!data.admin_webhook_url.is_empty(), Ordering::Relaxed);
+        self.admin_webhook_present.store(!data.admin_webhook_url.is_empty(), Ordering::Relaxed);
+        self.featured_webhook_present
+            .store(!data.featured_webhook_url.is_empty(), Ordering::Relaxed);
+        self.room_webhook_present.store(!data.room_webhook_url.is_empty(), Ordering::Relaxed);
 
         let mut issuer = self.token_issuer.lock();
 
@@ -168,7 +183,7 @@ impl CentralBridge {
     }
 
     // other web requests
-    pub async fn get_user_data(&self, player: &str) -> Result<UserEntry> {
+    pub async fn get_user_data(&self, player: &str) -> Result<ServerUserEntry> {
         let response = self
             .http_client
             .get(format!("{}gs/user/{}", self.central_url, player))
@@ -187,10 +202,10 @@ impl CentralBridge {
         let mut reader = ByteReader::from_bytes(&config);
         reader.validate_self_checksum()?;
 
-        Ok(reader.read_value::<UserEntry>()?)
+        Ok(reader.read_value::<ServerUserEntry>()?)
     }
 
-    pub async fn update_user_data(&self, user: &UserEntry) -> Result<()> {
+    pub async fn update_user_data(&self, user: &ServerUserEntry) -> Result<()> {
         let mut buffer = ByteBuffer::with_capacity(user.encoded_size() + size_of_types!(u32));
 
         buffer.write_value(user);
@@ -217,43 +232,31 @@ impl CentralBridge {
     }
 
     #[inline]
-    pub async fn send_webhook_message(&self, message: WebhookMessage) -> Result<()> {
-        let messages = [message];
-        self.send_webhook_messages(&messages).await
+    pub async fn send_admin_webhook_message(&self, message: WebhookMessage) -> Result<()> {
+        self.send_webhook_messages(&[message], WebhookChannel::Admin).await
+    }
+
+    #[inline]
+    pub async fn send_rate_suggestion_webhook_message(&self, message: WebhookMessage) -> Result<()> {
+        self.send_webhook_messages(&[message], WebhookChannel::RateSuggestion).await
     }
 
     // not really bridge but it was making web requests which is sorta related i guess
-    pub async fn send_webhook_messages(&self, messages: &[WebhookMessage]) -> Result<()> {
-        let url = self.central_conf.lock().admin_webhook_url.clone();
-
-        let mut embeds = Vec::new();
-
-        for message in messages {
-            if let Some(embed) = webhook::embed_for_message(message) {
-                embeds.push(embed);
-            }
-        }
-
-        let opts = WebhookOpts {
-            username: None,
-            content: None,
-            embeds,
+    pub async fn send_webhook_messages(&self, messages: &[WebhookMessage], channel: WebhookChannel) -> Result<()> {
+        let url = match channel {
+            WebhookChannel::Admin => self.central_conf.lock().admin_webhook_url.clone(),
+            WebhookChannel::RateSuggestion => self.central_conf.lock().rate_suggestion_webhook_url.clone(),
+            WebhookChannel::Featured => self.central_conf.lock().featured_webhook_url.clone(),
+            WebhookChannel::Room => self.central_conf.lock().room_webhook_url.clone(),
         };
 
-        let response = self
-            .http_client
-            .post(url)
-            .header("Content-Type", "application/json")
-            .body(serde_json::to_string(&opts).map_err(|e| CentralBridgeError::Other(e.to_string()))?)
-            .send()
-            .await?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let message = response.text().await.unwrap_or_else(|_| "<no response>".to_owned());
-
-            return Err(CentralBridgeError::WebhookError((status, message)));
-        }
+        webhook::send_webhook_messages(self.http_client.clone(), &url, messages, None)
+            .await
+            .map_err(|e| match e {
+                WebhookError::Serialization(e) => CentralBridgeError::Other(e),
+                WebhookError::Request(e) => CentralBridgeError::RequestError(e),
+                WebhookError::RequestStatus((sc, message)) => CentralBridgeError::WebhookError((sc, message)),
+            })?;
 
         Ok(())
     }

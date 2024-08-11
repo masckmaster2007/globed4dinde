@@ -64,19 +64,11 @@ namespace util::format {
 
         if (message.find("<html>") != std::string::npos) {
             message = "<HTML response, not showing>";
-        } else if (message.size() > 128) {
-            message = message.substr(0, 128) + "...";
+        } else if (message.size() > 164) {
+            message = message.substr(0, 164) + "...";
         }
 
         return message;
-    }
-
-    std::string webError(const WebRequestError& error) {
-        if (error.message.empty()) {
-            return fmt::format("code {}: empty response", error.code);
-        } else {
-            return fmt::format("code {}: {}", error.code, formatErrorMessage(error.message));
-        }
     }
 
     std::string formatPlatformerTime(uint32_t ms) {
@@ -199,6 +191,87 @@ namespace util::format {
         }
 
         out.emplace_back(s.substr(start));
+
+        return out;
+    }
+
+    std::vector<std::string_view> splitlines(const std::string_view s) {
+        std::vector<std::string_view> lines;
+        std::size_t start = 0;
+        while (start < s.size()) {
+            std::size_t end = s.find_first_of("\r\n", start);
+
+            if (end == std::string_view::npos) {
+                lines.emplace_back(s.substr(start));
+                break;
+            }
+
+            lines.emplace_back(s.substr(start, end - start));
+            if (s[end] == '\r' && end + 1 < s.size() && s[end + 1] == '\n') {
+                end += 1;
+            }
+
+            start = end + 1;
+        }
+
+        return lines;
+    }
+
+    std::tuple<std::string_view, std::string_view, std::string_view> partition(std::string_view s, std::string_view sep) {
+        auto sepidx = s.find(sep);
+        if (sepidx == std::string::npos) {
+            return std::make_tuple(s, "", "");
+        }
+
+        return std::make_tuple(s.substr(0, sepidx), sep, s.substr(sepidx + sep.size()));
+    }
+
+    std::tuple<std::string_view, std::string_view, std::string_view> rpartition(std::string_view s, std::string_view sep) {
+        auto sepidx = s.rfind(sep);
+        if (sepidx == std::string::npos) {
+            return std::make_tuple(s, "", "");
+        }
+
+        return std::make_tuple(s.substr(0, sepidx), sep, s.substr(sepidx + sep.size()));
+    }
+
+    std::tuple<std::string_view, char, std::string_view> partition(std::string_view s, char sep) {
+        auto sepidx = s.find(sep);
+        if (sepidx == std::string::npos) {
+            return std::make_tuple(s, '\0', "");
+        }
+
+        return std::make_tuple(s.substr(0, sepidx), sep, s.substr(sepidx + 1));
+    }
+
+    std::tuple<std::string_view, char, std::string_view> rpartition(std::string_view s, char sep) {
+        auto sepidx = s.rfind(sep);
+        if (sepidx == std::string::npos) {
+            return std::make_tuple(s, '\0', "");
+        }
+
+        return std::make_tuple(s.substr(0, sepidx), sep, s.substr(sepidx + 1));
+    }
+
+    std::string replace(std::string_view input, std::string_view searched, std::string_view replacement) {
+        std::string out;
+        out.reserve(input.size());
+
+        // input = 5 = abcde
+        // searched = 2 = bc
+        // i = 0 through 3 s
+
+        for (size_t i = 0; i < input.size();) {
+            // if does not match, simply append
+            if (input.substr(i, searched.size()) != searched) {
+                out += input[i];
+                i++;
+            } else {
+                // if matches, increment i by size of searched and append the replacement
+                out += replacement;
+                i += searched.size();
+            }
+        }
 
         return out;
     }

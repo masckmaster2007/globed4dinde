@@ -1,7 +1,11 @@
 #pragma once
 #include <cmath>
 #include <limits>
-#include <concepts>
+#include <stdexcept>
+#include <type_traits>
+#include <stdint.h>
+
+#include <defs/assert.hpp>
 
 namespace util::math {
     constexpr float FLOAT_ERROR_MARGIN = 0.002f;
@@ -17,6 +21,28 @@ namespace util::math {
         return std::isnan(val) ? snan() : val;
     }
 
+    template <typename T>
+    inline constexpr T abs(T val) {
+#ifdef __clang__
+        if constexpr (std::is_same_v<T, float>) return __builtin_fabsf(val);
+        else if constexpr (std::is_same_v<T, double>) return __builtin_fabs(val);
+        else if constexpr (std::is_same_v<T, long double>) return __builtin_fabsl(val);
+        else globed::unreachable();
+#endif
+
+        if constexpr (std::is_same_v<T, double>) {
+            union { double f; uint64_t i; } u = {val};
+            u.i &= -1ULL/2;
+            return u.f;
+        } else if constexpr (std::is_same_v<T, float>) {
+            union { float f; uint32_t i; } u = {val};
+            u.i &= -1U/2;
+            return u.f;
+        } else {
+            throw std::runtime_error("invalid type for abs");
+        }
+    }
+
     // Returns `true` if all passed numbers are valid. Returns `false` if at least one of them is NaN
     template <typename... Args> requires (std::floating_point<Args> && ...)
     bool constexpr checkNotNaN(Args... args) {
@@ -27,20 +53,20 @@ namespace util::math {
 
     // `val1` == `val2`
     inline constexpr bool equal(float val1, float val2, float errorMargin = FLOAT_ERROR_MARGIN) {
-        return std::fabs(val2 - val1) < errorMargin;
+        return abs(val2 - val1) < errorMargin;
     }
     // `val1` == `val2`
     inline constexpr bool equal(double val1, double val2, double errorMargin = DOUBLE_ERROR_MARGIN) {
-        return std::abs(val2 - val1) < errorMargin;
+        return abs(val2 - val1) < errorMargin;
     }
 
     // `val1` > `val2`
     inline constexpr bool greater(float val1, float val2, float errorMargin = FLOAT_ERROR_MARGIN) {
-        return val1 > val2 && std::fabs(val2 - val1) > errorMargin;
+        return val1 > val2 && abs(val2 - val1) > errorMargin;
     }
     // `val1` > `val2`
     inline constexpr bool greater(double val1, double val2, double errorMargin = DOUBLE_ERROR_MARGIN) {
-        return val1 > val2 && std::abs(val2 - val1) > errorMargin;
+        return val1 > val2 && abs(val2 - val1) > errorMargin;
     }
     // `val1` >= `val2`
     inline constexpr bool greaterOrEqual(float val1, float val2, float errorMargin = FLOAT_ERROR_MARGIN) {
@@ -53,11 +79,11 @@ namespace util::math {
 
     // `val1` < `val2`
     inline constexpr bool smaller(float val1, float val2, float errorMargin = FLOAT_ERROR_MARGIN) {
-        return val1 < val2 && std::fabs(val2 - val1) > errorMargin;
+        return val1 < val2 && fabs(val2 - val1) > errorMargin;
     }
     // `val1` < `val2`
     inline constexpr bool smaller(double val1, double val2, double errorMargin = DOUBLE_ERROR_MARGIN) {
-        return val1 < val2 && std::abs(val2 - val1) > errorMargin;
+        return val1 < val2 && abs(val2 - val1) > errorMargin;
     }
     // `val1` <= `val2`
     inline constexpr bool smallerOrEqual(float val1, float val2, float errorMargin = FLOAT_ERROR_MARGIN) {

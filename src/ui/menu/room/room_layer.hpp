@@ -1,6 +1,6 @@
 #pragma once
 
-#include "player_list_cell.hpp"
+#include "list_cell.hpp"
 #include <defs/geode.hpp>
 #include <data/types/gd.hpp>
 #include <ui/general/list/list.hpp>
@@ -11,7 +11,7 @@ class RoomJoinedPacket;
 class RoomInfoPacket;
 class RoomInfo;
 
-class RoomLayer : public cocos2d::CCLayer {
+class RoomLayer : public cocos2d::CCLayer, public LevelDownloadDelegate, public LevelManagerDelegate {
 public:
     cocos2d::CCSize popupSize;
     cocos2d::CCSize listSize;
@@ -22,7 +22,7 @@ public:
 protected:
     friend class CreateRoomPopup;
 
-    using PlayerList = GlobedListLayer<PlayerListCell>;
+    using PlayerList = GlobedListLayer<ListCellWrapper>;
 
     std::vector<PlayerRoomPreviewAccountData> playerList;
     std::string currentFilter;
@@ -31,9 +31,10 @@ protected:
     Ref<LoadingCircle> loadingCircle;
     Ref<cocos2d::CCMenu> topRightButtons;
     PlayerList* listLayer;
-    Ref<CCMenuItemSpriteExtra> btnSearch, btnClearSearch, btnSettings, btnInvite, btnRefresh;
+    Ref<CCMenuItemSpriteExtra> btnSearch, btnClearSearch, btnSettings, btnInvite, btnRefresh, btnCloseRoom;
     Ref<CCMenuItemToggler> btnInvisible;
     Ref<cocos2d::CCMenu> btnRoomId, roomButtonMenu;
+    Ref<ListCellWrapper> roomLevelCell;
 
     bool init() override;
     void update(float) override;
@@ -47,8 +48,9 @@ protected:
     void recreatePlayerList();
     void sortPlayerList();
     void setFilter(std::string_view filter);
-    void resetFilter();
     void setRoomTitle(std::string_view name, uint32_t id);
+    void resetFilter();
+    void closeRoom();
 
     void addRoomButtons();
     void addGlobalRoomButtons();
@@ -63,4 +65,6 @@ protected:
     // callbacks
     void onInvisibleClicked(cocos2d::CCObject*);
     void onCopyRoomId(cocos2d::CCObject*);
+
+    ~RoomLayer();
 };

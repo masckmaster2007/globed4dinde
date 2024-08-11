@@ -1,6 +1,6 @@
 #include "lerp_logger.hpp"
 
-#include <defs/crash.hpp>
+#include <defs/assert.hpp>
 
 void LerpLogger::reset(uint32_t id) {
 #ifdef GLOBED_DEBUG_INTERPOLATION

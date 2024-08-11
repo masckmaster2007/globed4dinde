@@ -79,8 +79,13 @@ impl Room {
     }
 
     #[inline]
-    pub fn set_settings(&mut self, settings: &RoomSettings) {
-        self.settings.clone_from(settings);
+    pub fn has_player(&self, player: i32) -> bool {
+        self.manager.has_player(player)
+    }
+
+    #[inline]
+    pub fn set_settings(&mut self, settings: RoomSettings) {
+        self.settings = settings;
     }
 
     #[inline]

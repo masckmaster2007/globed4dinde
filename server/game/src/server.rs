@@ -10,7 +10,7 @@ use globed_shared::{
     crypto_box::{aead::OsRng, PublicKey, SecretKey},
     esp::ByteBufferExtWrite as _,
     logger::*,
-    SyncMutex, UserEntry,
+    ServerUserEntry, SyncMutex,
 };
 use rustc_hash::FxHashMap;
 use tokio::{
@@ -464,7 +464,7 @@ impl GameServer {
             .lock()
             .values()
             .filter(|thr| thr.authenticated())
-            .map(|thread| thread.account_data.lock().make_preview())
+            .map(|thread| thread.account_data.lock().make_preview(!thread.privacy_settings.lock().get_hide_roles()))
             .fold(0, |count, preview| count + usize::from(f(&preview, count, additional)))
     }
 
@@ -477,7 +477,7 @@ impl GameServer {
             .lock()
             .values()
             .filter(|thr| thr.authenticated() && thr.room_id.load(Ordering::Relaxed) == room_id)
-            .map(|thread| thread.account_data.lock().make_preview())
+            .map(|thread| thread.account_data.lock().make_preview(!thread.privacy_settings.lock().get_hide_roles()))
             .fold(0, |count, preview| count + usize::from(f(&preview, count, additional)))
     }
 
@@ -494,7 +494,7 @@ impl GameServer {
                     return false;
                 }
 
-                force_visibility || !thr.is_invisible.load(Ordering::Relaxed) || thr.account_id.load(Ordering::Relaxed) == requested
+                force_visibility || !thr.privacy_settings.lock().get_hide_from_lists() || thr.account_id.load(Ordering::Relaxed) == requested
             })
             .map(|thread| {
                 let mut level_id = thread.level_id.load(Ordering::Relaxed);
@@ -504,7 +504,9 @@ impl GameServer {
                     level_id = 0;
                 }
 
-                thread.account_data.lock().make_room_preview(level_id)
+                let show_roles = !thread.privacy_settings.lock().get_hide_roles();
+
+                thread.account_data.lock().make_room_preview(level_id, show_roles)
             })
             .fold(0, |count, preview| count + usize::from(f(&preview, count, additional)))
     }
@@ -591,7 +593,7 @@ impl GameServer {
             .lock()
             .values()
             .find(|thr| thr.account_id.load(Ordering::Relaxed) == account_id)
-            .map(|thr| thr.account_data.lock().make_preview())
+            .map(|thr| thr.account_data.lock().make_preview(!thr.privacy_settings.lock().get_hide_roles()))
     }
 
     /// If someone is already logged in under the given account ID, logs them out.
@@ -665,7 +667,7 @@ impl GameServer {
 
     /// Try to find a user by name or account ID, invoke the passed closure, and if it returns `true`,
     /// send a request to the central server to update the account.
-    pub async fn find_and_update_user<F: FnOnce(&mut UserEntry) -> bool>(&self, name: &str, f: F) -> anyhow::Result<()> {
+    pub async fn find_and_update_user<F: FnOnce(&mut ServerUserEntry) -> bool>(&self, name: &str, f: F) -> anyhow::Result<()> {
         if let Some(thread) = self.find_user(name) {
             self.update_user(&thread, f).await
         } else {
@@ -673,7 +675,7 @@ impl GameServer {
         }
     }
 
-    pub async fn update_user<F: FnOnce(&mut UserEntry) -> bool>(&self, thread: &ClientThread, f: F) -> anyhow::Result<()> {
+    pub async fn update_user<F: FnOnce(&mut ServerUserEntry) -> bool>(&self, thread: &ClientThread, f: F) -> anyhow::Result<()> {
         let result = {
             let mut data = thread.user_entry.lock();
             f(&mut data)
@@ -748,6 +750,18 @@ impl GameServer {
 
             self.broadcast_room_message(&ServerThreadMessage::BroadcastRoomInfo(pkt), 0, room_id)
                 .await;
+        }
+    }
+
+    /// kick users from the room and send a `RoomPlayerListPacket`
+    pub async fn broadcast_room_kicked(&self, account_id: i32) {
+        if let Some(user) = self.get_user_by_id(account_id) {
+            let room_id = user.room_id.load(Ordering::Relaxed);
+            if room_id == 0 {
+                return;
+            }
+
+            user.push_new_message(ServerThreadMessage::BroadcastRoomKicked).await;
         }
     }
 

@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use globed_shared::{
     esp::{types::FastString, ByteBuffer, ByteBufferExtWrite},
     logger::debug,
-    GameServerBootData, UserEntry, MAX_SUPPORTED_PROTOCOL, SERVER_MAGIC,
+    GameServerBootData, ServerUserEntry, MAX_SUPPORTED_PROTOCOL, SERVER_MAGIC,
 };
 
 use rocket::{get, post, serde::json::Json, State};
@@ -36,6 +36,9 @@ pub async fn boot(
         admin_key: FastString::new(&config.admin_key),
         whitelist: config.userlist_mode == UserlistMode::Whitelist,
         admin_webhook_url: config.admin_webhook_url.clone(),
+        rate_suggestion_webhook_url: config.rate_suggestion_webhook_url.clone(),
+        featured_webhook_url: config.featured_webhook_url.clone(),
+        room_webhook_url: config.room_webhook_url.clone(),
         chat_burst_limit: config.chat_burst_limit,
         chat_burst_interval: config.chat_burst_interval,
         roles: config.roles.clone(),
@@ -51,9 +54,9 @@ pub async fn boot(
     Ok(bb.into_vec())
 }
 
-async fn _get_user(database: &GlobedDb, user: &str) -> WebResult<UserEntry> {
+async fn _get_user(database: &GlobedDb, user: &str) -> WebResult<ServerUserEntry> {
     Ok(if let Ok(account_id) = user.parse::<i32>() {
-        database.get_user(account_id).await?.unwrap_or_else(|| UserEntry::new(account_id))
+        database.get_user(account_id).await?.unwrap_or_else(|| ServerUserEntry::new(account_id))
     } else {
         let user = database.get_user_by_name(user).await?;
 
@@ -87,7 +90,7 @@ pub async fn update_user(
     state: &State<ServerState>,
     password: GameServerPasswordGuard,
     database: &GlobedDb,
-    userdata: CheckedDecodableGuard<UserEntry>,
+    userdata: CheckedDecodableGuard<ServerUserEntry>,
 ) -> WebResult<()> {
     let correct = state.state_read().await.config.game_server_password.clone();
 
@@ -95,7 +98,7 @@ pub async fn update_user(
         unauthorized!("invalid gameserver credentials");
     }
 
-    database.update_user(userdata.0.account_id, &userdata.0).await?;
+    database.update_user_server(userdata.0.account_id, &userdata.0).await?;
 
     Ok(())
 }
@@ -109,7 +112,7 @@ pub async fn p_get_user(
     database: &GlobedDb,
     user: &str,
     _user_agent: GameServerUserAgentGuard<'_>,
-) -> WebResult<Json<UserEntry>> {
+) -> WebResult<Json<ServerUserEntry>> {
     let correct = state.state_read().await.config.game_server_password.clone();
 
     if !password.verify(&correct) {
@@ -124,7 +127,7 @@ pub async fn p_update_user(
     state: &State<ServerState>,
     password: GameServerPasswordGuard,
     database: &GlobedDb,
-    userdata: Json<UserEntry>,
+    userdata: Json<ServerUserEntry>,
 ) -> WebResult<()> {
     let correct = state.state_read().await.config.game_server_password.clone();
 
@@ -132,7 +135,7 @@ pub async fn p_update_user(
         unauthorized!("invalid gameserver credentials");
     }
 
-    database.update_user(userdata.0.account_id, &userdata).await?;
+    database.update_user_server(userdata.0.account_id, &userdata.0).await?;
 
     Ok(())
 }

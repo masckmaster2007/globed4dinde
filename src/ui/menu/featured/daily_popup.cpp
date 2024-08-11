@@ -2,7 +2,6 @@
 
 #include "daily_level_cell.hpp"
 #include "featured_list_layer.hpp"
-#include "edit_featured_level_popup.hpp"
 #include <managers/daily_manager.hpp>
 #include <managers/admin.hpp>
 #include <net/manager.hpp>
@@ -36,7 +35,7 @@ bool DailyPopup::setup() {
         .intoMenuItem([](auto) {
             FLAlertLayer::create(
                         "Featured Guide",
-                        "Globed will occasionally <co>highlight Platformer levels</c> made by the community.\n\nThe three feature types are:\n<cl>Normal</c>, <cj>Epic</c>, and <cg>Outstanding</c>.\n\nSuggest levels on our <cb>Discord server</c> for a chance at being selected!",
+                        "Globed will occasionally <co>highlight Platformer levels</c> made by the community.\n\nThe three feature types are:\n<cl>Normal</c>, <cj>Epic</c>, and <cg>Outstanding</c>.\n\nDepending on the type, a level can be featured for <cl>12 hours</c>, <cj>1 day</c> or <cg>2 days</c>",
                     "Ok")->show();
         })
         .parent(blCornerMenu);
@@ -85,23 +84,6 @@ bool DailyPopup::setup() {
     );
 
     m_mainLayer->runAction(sequence);
-
-    if (AdminManager::get().authorized()) {
-        auto& role = AdminManager::get().getRole();
-        if (role.editFeaturedLevels) {
-            Build<CCSprite>::createSpriteName("accountBtn_settings_001.png")
-                .scale(0.7f)
-                .intoMenuItem([this] {
-                    EditFeaturedLevelPopup::create()->show();
-                })
-                .id("edit-btn")
-                .pos(rlayout.topRight - CCPoint{20.f, 20.f})
-                .intoNewParent(CCMenu::create())
-                .id("edit-menu")
-                .pos(0.f, 0.f)
-                .parent(m_mainLayer);
-        }
-    }
 
     // refresh button
     Build<CCSprite>::createSpriteName("GJ_updateBtn_001.png")

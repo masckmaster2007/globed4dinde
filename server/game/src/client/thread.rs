@@ -14,7 +14,7 @@ use crate::tokio::{
     sync::{Mutex, Notify},
 };
 use esp::ByteReader;
-use globed_shared::{logger::*, SyncMutex, UserEntry};
+use globed_shared::{logger::*, ServerUserEntry, SyncMutex};
 use handlers::game::MAX_VOICE_PACKET_SIZE;
 use tokio::time::Instant;
 
@@ -44,6 +44,7 @@ pub enum ServerThreadMessage {
     BroadcastBan(ServerBannedPacket),
     BroadcastMute(ServerMutedPacket),
     BroadcastRoleChange(RolesUpdatedPacket),
+    BroadcastRoomKicked,
     TerminationNotice(FastString),
 }
 
@@ -61,14 +62,14 @@ pub struct ClientThread {
     pub room_id: AtomicU32,
 
     pub account_data: SyncMutex<PlayerAccountData>,
-    pub user_entry: SyncMutex<UserEntry>,
+    pub user_entry: SyncMutex<ServerUserEntry>,
     pub user_role: SyncMutex<ComputedRole>,
 
     pub fragmentation_limit: AtomicU16,
 
-    pub is_authorized_admin: AtomicBool,
+    pub is_authorized_user: AtomicBool,
 
-    pub is_invisible: AtomicBool,
+    pub privacy_settings: SyncMutex<UserPrivacyFlags>,
 
     message_queue: Mutex<VecDeque<ServerThreadMessage>>,
     message_notify: Notify,
@@ -128,9 +129,9 @@ impl ClientThread {
 
             fragmentation_limit: thread.fragmentation_limit,
 
-            is_authorized_admin: AtomicBool::new(false),
+            is_authorized_user: AtomicBool::new(false),
 
-            is_invisible: thread.is_invisible,
+            privacy_settings: thread.privacy_settings,
 
             message_queue: Mutex::new(VecDeque::new()),
             message_notify: Notify::new(),
@@ -373,13 +374,20 @@ impl ClientThread {
                 self.send_packet_dynamic(&packet).await?;
                 info!("{} is receiving a notice: {}", self.account_data.lock().name, packet.message);
             }
-            ServerThreadMessage::BroadcastInvite(packet) => self.send_packet_static(&packet).await?,
+            ServerThreadMessage::BroadcastInvite(packet) => {
+                let invitable = !self.privacy_settings.lock().get_no_invites();
+
+                if invitable {
+                    self.send_packet_static(&packet).await?;
+                }
+            }
             ServerThreadMessage::BroadcastRoomInfo(packet) => {
                 self.send_packet_static(&packet).await?;
             }
             ServerThreadMessage::BroadcastBan(packet) => self.ban(packet.message, packet.timestamp).await?,
             ServerThreadMessage::BroadcastMute(packet) => self.send_packet_dynamic(&packet).await?,
             ServerThreadMessage::BroadcastRoleChange(packet) => self.send_packet_static(&packet).await?,
+            ServerThreadMessage::BroadcastRoomKicked => self._kicked_from_room().await?,
             ServerThreadMessage::TerminationNotice(message) => self.kick(message.try_to_str()).await?,
         }
 
@@ -452,6 +460,8 @@ impl ClientThread {
             UpdateRoomSettingsPacket::PACKET_ID => self.handle_update_room_settings(&mut data).await,
             RoomSendInvitePacket::PACKET_ID => self.handle_room_invitation(&mut data).await,
             RequestRoomListPacket::PACKET_ID => self.handle_request_room_list(&mut data).await,
+            CloseRoomPacket::PACKET_ID => self.handle_close_room(&mut data).await,
+            KickRoomPlayerPacket::PACKET_ID => self.handle_kick_room_player(&mut data).await,
 
             /* admin related */
             AdminAuthPacket::PACKET_ID => self.handle_admin_auth(&mut data).await,
@@ -459,6 +469,7 @@ impl ClientThread {
             AdminDisconnectPacket::PACKET_ID => self.handle_admin_disconnect(&mut data).await,
             AdminGetUserStatePacket::PACKET_ID => self.handle_admin_get_user_state(&mut data).await,
             AdminUpdateUserPacket::PACKET_ID => self.handle_admin_update_user(&mut data).await,
+            AdminSendFeaturedLevelPacket::PACKET_ID => self.handle_admin_send_featured_level(&mut data).await,
             x => Err(PacketHandlingError::NoHandler(x)),
         }
     }

@@ -10,6 +10,7 @@ class PacketListener;
 class NetworkAddress;
 struct GameServer;
 class Packet;
+struct UserPrivacyFlags;
 
 template <typename T>
 concept HasPacketID = requires { T::PACKET_ID; };
@@ -128,9 +129,10 @@ public:
     bool isProtocolSupported(uint16_t version);
 
     // Packet sending
-    void sendUpdatePlayerStatus(bool invisible);
+    void sendUpdatePlayerStatus(const UserPrivacyFlags& flags);
     void sendRequestRoomPlayerList();
     void sendLeaveRoom();
+    void sendCloseRoom();
     void sendRequestPlayerCount(LevelId id);
     void sendRequestPlayerCount(std::vector<LevelId> ids);
 
@@ -139,5 +141,6 @@ private:
     Impl* impl;
 
     friend class PacketListener;
+    friend class PacketListenerPool;
     void unregisterPacketListener(packetid_t packet, PacketListener* listener, bool suppressUnhandled = true);
 };

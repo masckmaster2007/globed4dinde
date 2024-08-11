@@ -32,7 +32,7 @@ void GlobedPauseLayer::customSetup() {
         .id("btn-open-playerlist"_spr)
         .parent(menu);
 
-    // TODO: bring back when it works properly
+    // TODO chat: bring back when it works properly
     // auto* chatIcon = Build<CCSprite>::createSpriteName("icon-chat.png"_spr)
     //     .scale(0.9f)
     //     .intoMenuItem([](auto) {
@@ -88,11 +88,27 @@ bool GlobedPauseLayer::hasPopup() {
 
 REPLACE(onQuit);
 REPLACE(onResume);
-REPLACE(onRestart);
-REPLACE(onRestartFull);
 REPLACE(onEdit);
 REPLACE(onNormalMode);
 REPLACE(onPracticeMode);
+
+/* deathlink */
+
+void GlobedPauseLayer::onRestart(CCObject* s) {
+    if (this->hasPopup()) return;
+
+    GlobedGJBGL::get()->m_fields->isManuallyResettingLevel = true;
+    PauseLayer::onRestart(s);
+    GlobedGJBGL::get()->m_fields->isManuallyResettingLevel = false;
+}
+
+void GlobedPauseLayer::onRestartFull(CCObject* s) {
+    if (this->hasPopup()) return;
+
+    GlobedGJBGL::get()->m_fields->isManuallyResettingLevel = true;
+    PauseLayer::onRestartFull(s);
+    GlobedGJBGL::get()->m_fields->isManuallyResettingLevel = false;
+}
 
 /* bugfix */
 

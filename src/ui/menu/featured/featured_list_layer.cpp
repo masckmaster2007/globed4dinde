@@ -51,6 +51,16 @@ bool GlobedFeaturedListLayer::init() {
         .zOrder(2)
         .parent(this);
 
+    // levels label
+    Build<CCLabelBMFont>::create("", "goldFont.fnt")
+        .id("level-count-label")
+        .pos(winSize.width - 7, winSize.height - 2)
+        .scale(0.45f)
+        .zOrder(2)
+        .anchorPoint({1, 1})
+        .parent(this)
+        .store(levelsCount);
+
     constexpr float pageBtnPadding = 20.f;
 
     // pages buttons
@@ -105,6 +115,10 @@ bool GlobedFeaturedListLayer::init() {
     return true;
 }
 
+GlobedFeaturedListLayer::~GlobedFeaturedListLayer() {
+    DailyManager::get().clearMultiWebCallback();
+}
+
 void GlobedFeaturedListLayer::update(float dt) {
     if (!listLayer || !listLayer->m_listView) return;
 
@@ -127,6 +141,13 @@ void GlobedFeaturedListLayer::reloadPage() {
     } else {
         this->createLevelList(levelPages[currentPage]);
     }
+
+    int highest = DailyManager::get().getLastSeenFeaturedLevel();
+    int pageMin = currentPage * 10 + 1;
+    int pageMax = (currentPage + 1) * 10;
+    if (pageMax > highest) pageMax = pageMin + (highest % 10) - 1;
+
+    levelsCount->setString(fmt::format("{} to {} of {}", pageMin, pageMax, highest).c_str());
 }
 
 void GlobedFeaturedListLayer::loadListCommon() {
@@ -165,6 +186,9 @@ void GlobedFeaturedListLayer::createLevelList(const DailyManager::Page& page) {
 
     CCArray* finalArray = CCArray::create();
     for (auto& entry : page.levels) {
+        // if the level is invalid, skip it
+        if (!entry.second) continue;
+
         util::gd::reorderDownloadedLevel(entry.second);
 
         if (entry.second) {
@@ -185,15 +209,10 @@ void GlobedFeaturedListLayer::createLevelList(const DailyManager::Page& page) {
 
     // guys we are about to do a funny
     for (auto* cell : CCArrayExt<GlobedLevelCell*>(listLayer->m_listView->m_tableView->m_contentLayer->getChildren())) {
-        // log::debug("rate tier: {}", levelToRateTier[cell->m_level->m_levelID]);
         cell->modifyToFeaturedCell(levelToRateTier[cell->m_level->m_levelID]);
         if (levelToRateTier.contains(cell->m_level->m_levelID)) {
             static_cast<GlobedLevelCell*>(cell)->m_fields->rateTier = levelToRateTier[cell->m_level->m_levelID];
         }
-        // if (!.contains(levelId)) continue;
-
-        // TODO
-        // static_cast<GlobedLevelCell*>(cell)->updatePlayerCount(levelList.at(levelId));
     }
 
     // show the buttons

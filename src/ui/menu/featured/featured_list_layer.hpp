@@ -13,8 +13,10 @@ public:
     static constexpr size_t LIST_PAGE_SIZE = 30;
 
     static GlobedFeaturedListLayer* create();
+    ~GlobedFeaturedListLayer();
 
 private:
+    cocos2d::CCLabelBMFont* levelsCount;
     GJListLayer* listLayer = nullptr;
     LoadingCircle* loadingCircle = nullptr;
     CCMenuItemSpriteExtra *btnPagePrev = nullptr, *btnPageNext = nullptr;

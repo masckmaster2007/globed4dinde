@@ -39,20 +39,22 @@ CCTexture2D* HookedGameManager::loadIcon(int iconId, int iconType, int iconReque
         m_fields->iconCache[iconType][iconId] = texture;
     }
 
+    if (!texture) {
+        log::warn("loadIcon returned a null texture, icon ID = {}, icon type = {}", iconId, iconType);
+    }
+
     return texture;
 }
 
 void HookedGameManager::unloadIcon(int iconId, int iconType, int idk) {
-    GLOBED_CHECK_HOOK(GameManager::unloadIcon);
-
     // do nothing.
 }
 
+#ifndef GEODE_IS_WINDOWS
 void HookedGameManager::loadDeathEffect(int id) {
-    // TODO
-    // GLOBED_CHECK_HOOK(GameManager::loadDeathEffect);
     util::cocos::tryLoadDeathEffect(id);
 }
+#endif
 
 void HookedGameManager::reloadAllStep2() {
     this->resetAssetPreloadState();

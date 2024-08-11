@@ -2,11 +2,11 @@
 #include <defs/geode.hpp>
 
 #include <Geode/modify/GJBaseGameLayer.hpp>
-#include "Geode/loader/Dispatch.hpp"
 
 #include <data/types/room.hpp>
 #include <game/interpolator.hpp>
 #include <game/player_store.hpp>
+#include <game/module/base.hpp>
 #include <net/manager.hpp>
 #include <ui/game/player/remote_player.hpp>
 #include <ui/game/overlay/overlay.hpp>
@@ -33,21 +33,23 @@ class $modify(GlobedGJBGL, GJBaseGameLayer) {
         std::unique_ptr<PlayerInterpolator> interpolator;
         std::unique_ptr<PlayerStore> playerStore;
         RoomSettings roomSettings;
-        struct TwoPlayerModeState {
-            bool active = false; // true when two player mode is enabled and linked to a player
-            bool isPrimary = false;
-            Ref<PlayerObject> linked;
-        } twopstate;
+
+        std::vector<std::unique_ptr<BaseGameplayModule>> modules;
+
+        bool isManuallyResettingLevel = false;
+
         bool progressForciblyDisabled = false; // affected by room settings, forces safe mode
         bool forcedPlatformer = false;
         bool shouldStopProgress = false;
         bool quitting = false;
         bool shouldRequestMeta = false;
+        bool isFakingDeath = false;
         GameCameraState camState;
 
         std::optional<SpiderTeleportData> spiderTp1, spiderTp2;
         bool didJustJumpp1 = false, didJustJumpp2 = false;
         bool isCurrentlyDead = false;
+        bool isLastDeathReal = false;
         float lastDeathTimestamp = 0.f;
 
         // ui elements
@@ -78,9 +80,8 @@ class $modify(GlobedGJBGL, GJBaseGameLayer) {
     $override
     void loadLevelSettings();
 
-    // TODO: bring back once 2p mode is out
-    // $override
-    // void updateCamera(float dt);
+    $override
+    void updateCamera(float dt);
 
     // vmt hook
     void onEnterHook();
@@ -91,7 +92,7 @@ class $modify(GlobedGJBGL, GJBaseGameLayer) {
     /* setup stuff to make init() cleaner */
     // all are ran in this order.
 
-    void setupPreInit(GJGameLevel* level);
+    void setupPreInit(GJGameLevel* level, bool editor);
 
     void setupAll();
 
@@ -130,6 +131,9 @@ class $modify(GlobedGJBGL, GJBaseGameLayer) {
     PlayerData gatherPlayerData();
     PlayerMetadata gatherPlayerMetadata();
 
+    static cocos2d::CCPoint getCameraDirectionVector();
+    static float getCameraDirectionAngle();
+
     bool shouldLetMessageThrough(int playerId);
     void updateProximityVolume(int playerId);
 
@@ -148,10 +152,13 @@ class $modify(GlobedGJBGL, GJBaseGameLayer) {
 
     void onQuitActions();
 
-    void linkPlayerTo(int accountId);
-
     // runs every frame while paused
     void pausedUpdate(float dt);
+
+    template <typename T> requires (std::is_base_of_v<BaseGameplayModule, T>)
+    void addModule() {
+        m_fields->modules.push_back(std::make_unique<T>(this));
+    }
 
     // With speedhack enabled, all scheduled selectors will run more often than they are supposed to.
     // This means, if you turn up speedhack to let's say 100x, you will send 3000 packets per second. That is a big no-no.
@@ -163,9 +170,8 @@ class $modify(GlobedGJBGL, GJBaseGameLayer) {
     bool accountForSpeedhack(int uniqueKey, float cap, float allowance = 0.9f);
 
     void unscheduleSelectors();
-    void rescheduleSelectors();
+    void unscheduleSelector(cocos2d::SEL_SCHEDULE selector);
 
-    /* Discord RPC */
-    void updateDRPC();
-    void selUpdateDRPC(float dt);
+    void rescheduleSelectors();
+    void customSchedule(cocos2d::SEL_SCHEDULE, float interval = 0.f);
 };

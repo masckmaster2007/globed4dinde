@@ -38,3 +38,13 @@ pub struct RoomSendInvitePacket {
 #[derive(Packet, Decodable)]
 #[packet(id = 13006)]
 pub struct RequestRoomListPacket;
+
+#[derive(Packet, Decodable)]
+#[packet(id = 13007)]
+pub struct CloseRoomPacket;
+
+#[derive(Packet, Decodable)]
+#[packet(id = 13008)]
+pub struct KickRoomPlayerPacket {
+    pub player: i32,
+}

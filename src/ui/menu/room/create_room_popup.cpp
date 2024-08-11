@@ -6,6 +6,7 @@
 #include <data/packets/client/room.hpp>
 #include <net/manager.hpp>
 #include <util/format.hpp>
+#include <util/math.hpp>
 #include <util/ui.hpp>
 
 using namespace geode::prelude;
@@ -14,6 +15,7 @@ constexpr int TAG_PRIVATE = 1021;
 constexpr int TAG_OPEN_INV = 1022;
 constexpr int TAG_COLLISION = 1023;
 constexpr int TAG_2P = 1024;
+constexpr int TAG_DEATHLINK = 1025;
 
 bool CreateRoomPopup::setup(RoomLayer* parent) {
     this->setID("CreateRoomPopup"_spr);
@@ -86,7 +88,7 @@ bool CreateRoomPopup::setup(RoomLayer* parent) {
         .intoNewChild(TextInput::create(POPUP_WIDTH * 0.25f, "", "chatFont.fnt"))
         .with([&](TextInput* input) {
             input->setFilter(std::string(util::misc::STRING_DIGITS));
-            input->setMaxCharCount(4);
+            input->setMaxCharCount(6);
         })
         .store(playerLimitInput)
         .intoParent()
@@ -114,10 +116,15 @@ bool CreateRoomPopup::setup(RoomLayer* parent) {
 
                     roomName = util::format::trim(roomName);
 
+                    // parse as a 32-bit int but cap at 10000
+                    // this is so that if a user inputs a number like 99999 (doesnt fit),
+                    // instead of making it 0, it makes it 10000
+
                     uint32_t playerCount = util::format::parse<uint32_t>(playerLimitInput->getString()).value_or(0);
+                    playerCount = util::math::min(playerCount, 10000);
 
                     NetworkManager::get().send(CreateRoomPacket::create(roomName, passwordInput->getString(), RoomSettings {
-                        settingFlags, playerCount
+                        settingFlags, static_cast<uint16_t>(playerCount)
                     }));
 
                     parent->startLoading();
@@ -150,6 +157,7 @@ bool CreateRoomPopup::setup(RoomLayer* parent) {
         {"Open Invites", TAG_OPEN_INV},
         {"Collision", TAG_COLLISION},
         // {"2-Player Mode", TAG_2P},
+        {"Death Link", TAG_DEATHLINK}
     });
 
     float totalHeight = 0.f;
@@ -210,6 +218,7 @@ void CreateRoomPopup::onCheckboxToggled(cocos2d::CCObject* p) {
         case TAG_COLLISION: settingFlags.collision = state; break;
         case TAG_OPEN_INV: settingFlags.publicInvites = state; break;
         case TAG_PRIVATE: settingFlags.isHidden = state; break;
+        case TAG_DEATHLINK: settingFlags.deathlink = state; break;
     }
 }
 

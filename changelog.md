@@ -1,3 +1,37 @@
+## v1.6.0
+
+* Fixed player names and status icons not rotating together with the camera (i.e. arrow trigger)
+* \-- You can return to the old behavior by disabling the "Rotate names" setting
+* \-- Thanks [TheSillyDoggo](https://github.com/TheSillyDoggo/) for implementing this!
+* the uhh badge list
+* made auth faster
+* Automatically block invites from users that you have blocked on GD
+* Remove Custom Keybinds dependency from Android
+* When playing in a Death Link room, the faster reset option is now forcefully disabled for all players
+* Fix crash caused by closing the globed menu too fast
+* Fix crash when muting a user that has exited the level
+* Fix room name overlapping other UI elements in the room listing
+* Fix player count going up to 4 digits on android (and cap to 10000 instead of 65535)
+* Fix the room listing getting closed when trying to join a room, even if joining fails
+* Fix "Player" with default icons showing up in the player list
+* Change max web request timeout to be 10 seconds in most places instead of 3 or 5 seconds
+* Various security improvements
+
+## v1.5.1
+
+* Fix Globed not loading on Android due to missing Custom Keybinds dependency
+
+## v1.5.0
+
+* Add a Death Link setting to rooms, which causes all players in the level to die if one of them dies
+* \-- **Huge thanks to <cg>Alphalaneous</c> for making the DeathLink mod and allowing us to use their idea**
+* Add ability for the room owner to close the room (kicks all players)
+* Change the Receive Invites From setting to friends only by default instead of everyone
+* Fix the player not being disconnected from the server if they log out of their GD account
+* Fix crash when closing the featured level list too fast
+* Fix spammy error popups on self-hosted servers when no featured level is selected
+* Add an age warning to the discord invite button
+
 ## v1.4.5
 
 * Add player counts to the featured level list

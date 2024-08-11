@@ -45,8 +45,23 @@ struct ComputedRole {
     bool editRole;
     bool editFeaturedLevels;
     bool admin;
+
+    bool canModerate() {
+        return notices || noticesToEveryone || kick || kickEveryone || mute || ban || editRole || editFeaturedLevels || admin;
+    }
 };
 
 GLOBED_SERIALIZABLE_STRUCT(ComputedRole, (
     priority, badgeIcon, nameColor, chatColor, notices, noticesToEveryone, kick, kickEveryone, mute, ban, editRole, editFeaturedLevels, admin
+));
+
+struct UserPrivacyFlags : BitfieldBase {
+    bool hideFromLists;
+    bool noInvites;
+    bool hideInGame;
+    bool hideRoles;
+};
+
+GLOBED_SERIALIZABLE_STRUCT(UserPrivacyFlags, (
+    hideFromLists, noInvites, hideInGame, hideRoles
 ));

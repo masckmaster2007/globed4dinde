@@ -6,7 +6,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use globed_shared::{
@@ -16,6 +16,7 @@ use globed_shared::{
     crypto_secretbox::{KeyInit, XSalsa20Poly1305},
     hmac::Hmac,
     rand::{self, distributions::Alphanumeric, rngs::OsRng, Rng, RngCore},
+    reqwest,
     sha2::Sha256,
     TokenIssuer,
 };
@@ -37,7 +38,7 @@ pub struct ActiveChallenge {
     pub name: String,
     pub value: String,
     pub answer: String,
-    pub started: Duration,
+    pub started: SystemTime,
 }
 
 pub struct ServerStateData {
@@ -48,6 +49,7 @@ pub struct ServerStateData {
     pub active_challenges: HashMap<IpAddr, ActiveChallenge>,
     pub challenge_pubkey: GenericArray<u8, U32>,
     pub challenge_box: XSalsa20Poly1305,
+    pub http_client: reqwest::Client,
 }
 
 impl ServerStateData {
@@ -60,6 +62,13 @@ impl ServerStateData {
         let challenge_box = XSalsa20Poly1305::new(&challenge_pubkey);
 
         let token_expiry = Duration::from_secs(config.token_expiry);
+        let http_client = reqwest::Client::builder()
+            .use_rustls_tls()
+            .danger_accept_invalid_certs(true)
+            .timeout(Duration::from_secs(5))
+            .user_agent(format!("globed-central-server/{}", env!("CARGO_PKG_VERSION")))
+            .build()
+            .unwrap();
 
         Self {
             config_path,
@@ -69,6 +78,7 @@ impl ServerStateData {
             active_challenges: HashMap::new(),
             challenge_pubkey,
             challenge_box,
+            http_client,
         }
     }
 
@@ -78,8 +88,8 @@ impl ServerStateData {
         account_id: i32,
         user_id: i32,
         account_name: &str,
-        user_ip: IpAddr,
-        current_time: Duration,
+        ip_address: IpAddr,
+        current_time: SystemTime,
     ) -> anyhow::Result<String> {
         let answer: String = rand::thread_rng().sample_iter(&Alphanumeric).take(16).map(char::from).collect();
 
@@ -113,7 +123,7 @@ impl ServerStateData {
             name: account_name.to_owned(),
         };
 
-        self.active_challenges.insert(user_ip, challenge);
+        self.active_challenges.insert(ip_address, challenge);
 
         Ok(challenge_str)
     }
@@ -160,6 +170,12 @@ impl ServerStateData {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn clear_outdated_challenges(&mut self) {
+        // remove all challenges older than 2 hours
+        self.active_challenges
+            .retain(|_, v| SystemTime::now().duration_since(v.started).unwrap_or_default().as_secs() < 60 * 60 * 2);
     }
 }
 

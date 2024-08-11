@@ -11,9 +11,11 @@ public:
     static constexpr float LIST_HEIGHT = 220.f;
 
     static GlobedMenuLayer* create();
+    ~GlobedMenuLayer();
 
 private:
     Ref<CCMenuItemSpriteExtra> levelListButton, serverSwitcherButton, discordButton, settingsButton;
+    Ref<cocos2d::CCSprite> featuredBtnGlow, featuredPopupNew;
     cocos2d::CCMenu *leftButtonMenu, *rightButtonMenu, *dailyButtonMenu;
     cocos2d::CCSprite* background;
 

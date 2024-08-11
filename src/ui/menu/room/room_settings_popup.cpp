@@ -12,7 +12,8 @@ enum {
     TAG_COLLISION = 454,
     TAG_TWO_PLAYER,
     TAG_PUBLIC_INVITES,
-    TAG_INVITE_ONLY
+    TAG_INVITE_ONLY,
+    TAG_DEATHLINK
 };
 
 #define MAKE_SETTING(name, desc, tag, storage) \
@@ -34,6 +35,8 @@ bool RoomSettingsPopup::setup() {
     MAKE_SETTING("2-Player Mode", "While enabled, players can link with another player to play a 2-player enabled level together", TAG_TWO_PLAYER, cellTwoPlayer);
 #endif
 
+    MAKE_SETTING("Death Link", "Whenever a player dies, everyone on the level dies as well. <cy>Inspired by the mod DeathLink from</c> <cg>Alphalaneous</c>.", TAG_DEATHLINK, cellDeathlink);
+
     auto* listLayer = Build(SettingList::createForComments(LIST_WIDTH, LIST_HEIGHT, RoomSettingCell::CELL_HEIGHT))
         .scale(0.65f)
         .anchorPoint(0.5f, 1.f)
@@ -44,8 +47,6 @@ bool RoomSettingsPopup::setup() {
     listLayer->swapCells(cells);
 
     NetworkManager::get().addListener<RoomInfoPacket>(this, [this](auto packet) {
-        log::debug("room configuration updated");
-
         RoomManager::get().setInfo(packet->info);
         this->currentSettings = packet->info.settings;
         this->updateCheckboxes();
@@ -66,6 +67,7 @@ void RoomSettingsPopup::onSettingClicked(cocos2d::CCObject* sender) {
         case TAG_PUBLIC_INVITES: currentSettings.flags.publicInvites = enabled; break;
         case TAG_COLLISION: currentSettings.flags.collision = enabled; break;
         case TAG_TWO_PLAYER: currentSettings.flags.twoPlayerMode = enabled; break;
+        case TAG_DEATHLINK: currentSettings.flags.deathlink = enabled; break;
     }
 
     // if we are not the room owner, just revert the changes next frame
@@ -76,7 +78,6 @@ void RoomSettingsPopup::onSettingClicked(cocos2d::CCObject* sender) {
         });
     } else {
         // otherwise, actually update the settings
-        log::debug("settings: {}", currentSettings.flags.isHidden, currentSettings.flags.publicInvites, currentSettings.flags.collision, currentSettings.flags.twoPlayerMode);
         NetworkManager::get().send(UpdateRoomSettingsPacket::create(currentSettings));
     }
 }
@@ -88,6 +89,7 @@ void RoomSettingsPopup::updateCheckboxes() {
 #ifdef GLOBED_DEBUG
     cellTwoPlayer->setToggled(currentSettings.flags.twoPlayerMode);
 #endif
+    cellDeathlink->setToggled(currentSettings.flags.deathlink);
 
     this->enableCheckboxes(RoomManager::get().isOwner());
 }
@@ -98,6 +100,7 @@ void RoomSettingsPopup::enableCheckboxes(bool enabled) {
 #ifdef GLOBED_DEBUG
         , cellTwoPlayer
 #endif
+        , cellDeathlink
     }) {
         cell->setEnabled(enabled);
     }

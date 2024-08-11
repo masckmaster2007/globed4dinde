@@ -2,10 +2,16 @@
 
 #include <hooks/game_manager.hpp>
 #include <hooks/gjbasegamelayer.hpp>
-#include <ui/menu/level_list/level_list_layer.hpp>
-#include <ui/menu/featured/featured_list_layer.hpp>
 #include <managers/daily_manager.hpp>
+#include <managers/admin.hpp>
+// todo remove (maybe)
+#include <managers/room.hpp>
+#include <data/packets/client/room.hpp>
+// end todo
 #include <net/manager.hpp>
+#include <ui/menu/level_list/level_list_layer.hpp>
+#include <ui/menu/featured/edit_featured_level_popup.hpp>
+#include <ui/menu/featured/featured_list_layer.hpp>
 #include <util/gd.hpp>
 
 using namespace geode::prelude;
@@ -16,6 +22,16 @@ static int& storedRateTier() {
 
 bool HookedLevelInfoLayer::init(GJGameLevel* level, bool challenge) {
     if (!LevelInfoLayer::init(level, challenge)) return false;
+
+    auto& am = AdminManager::get();
+    if (am.authorized() && am.getRole().canModerate()) {
+        this->addLevelSendButton();
+    }
+
+    auto& rm = RoomManager::get();
+    if (rm.isInRoom() && rm.isOwner()) {
+        this->addRoomLevelButton();
+    }
 
     // i hate myself
     if (level->m_levelIndex == 0) {
@@ -86,4 +102,59 @@ void HookedLevelInfoLayer::tryCloneLevel(CCObject* s) {
     }
 
     LevelInfoLayer::tryCloneLevel(s);
+}
+
+void HookedLevelInfoLayer::addLevelSendButton() {
+    auto* leftMenu = typeinfo_cast<CCMenu*>(this->getChildByIDRecursive("left-side-menu"));
+    if (!leftMenu) {
+        return;
+    }
+
+    bool plat = this->m_level->isPlatformer();
+    Build<CCSprite>::createSpriteName("icon-send-btn.png"_spr)
+        .intoMenuItem([this, plat] {
+            if (plat) {
+                EditFeaturedLevelPopup::create(this->m_level)->show();
+            } else {
+                FLAlertLayer::create("Error", "Only <cj>Platformer levels</c> are eligible to be <cg>Globed Featured!</c>", "Ok")->show();
+            }
+        })
+        .with([&](auto* btn) {
+            if (!plat) {
+                btn->setColor({100, 100, 100});
+            }
+        })
+        .id("send-btn"_spr)
+        .parent(leftMenu);
+
+    leftMenu->updateLayout();
+}
+
+void HookedLevelInfoLayer::addRoomLevelButton() {
+    auto makeButton = [this] {
+        return Build<CCSprite>::createSpriteName("GJ_shareBtn_001.png")
+            .scale(0.625f)
+            .intoMenuItem([this] {
+                auto settings = RoomManager::get().getInfo().settings;
+                settings.levelId = this->m_level->m_levelID.value();
+                NetworkManager::get().send(UpdateRoomSettingsPacket::create(settings));
+            })
+            .id("share-room-btn"_spr)
+            .collect();
+    };
+
+    auto rightMenu = this->getChildByIDRecursive("right-side-menu");
+    if (!rightMenu) return;
+
+    Build<CCSprite>::createSpriteName("GJ_shareBtn_001.png")
+        .scale(0.625f)
+        .intoMenuItem([this] {
+            auto settings = RoomManager::get().getInfo().settings;
+            settings.levelId = this->m_level->m_levelID.value();
+            NetworkManager::get().send(UpdateRoomSettingsPacket::create(settings));
+        })
+        .id("share-room-btn"_spr)
+        .parent(rightMenu);
+
+    rightMenu->updateLayout();
 }

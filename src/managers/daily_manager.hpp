@@ -29,14 +29,19 @@ public:
     // Fetches the level or returns a cached copy
     void getStoredLevel(std::function<void(GJGameLevel*, const GlobedFeaturedLevel&)>&& callback, bool force = false);
     void resetStoredLevel();
-    void clearWebCallback();
+    void clearSingleWebCallback();
+    void clearMultiWebCallback();
+    void clearMetaWebCallback();
 
+    // Fetches the level only from the central server
     void getCurrentLevelMeta(std::function<void(const GlobedFeaturedLevel&)>&& callback, bool force = false);
 
     // force clears all pages
     void getFeaturedLevels(int page, std::function<void(const Page&)>&& callback, bool force = false);
 
     void attachRatingSprite(int tier, cocos2d::CCNode* parent);
+    cocos2d::CCSprite* createRatingSprite(int tier);
+    void attachOverlayToSprite(cocos2d::CCNode* parent);
     GJDifficultySprite* findDifficultySprite(cocos2d::CCNode*);
 
     int getLastSeenFeaturedLevel();

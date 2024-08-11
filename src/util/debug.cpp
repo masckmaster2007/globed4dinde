@@ -169,7 +169,8 @@ namespace util::debug {
     [[noreturn]] void suicide(const std::source_location loc) {
         log::error("suicide called at {}, terminating.", sourceLocation(loc));
 		log::error("If you see this, something very, very bad happened.");
-        GLOBED_SUICIDE
+
+        std::abort();
     }
 #else
     std::string sourceLocation() {
@@ -179,7 +180,7 @@ namespace util::debug {
     [[noreturn]] void suicide() {
         log::error("suicide called at <unknown location>, terminating.");
         log::error("If you see this, something very, very bad happened.");
-        GLOBED_SUICIDE
+        std::abort();
     }
 #endif
 

@@ -1,7 +1,6 @@
-use std::{
-    net::IpAddr,
-    time::{SystemTime, UNIX_EPOCH},
-};
+// TODO: deprecate auth v1
+
+use std::{net::IpAddr, time::SystemTime};
 
 use globed_shared::{
     anyhow::{self, anyhow},
@@ -11,9 +10,9 @@ use globed_shared::{
 };
 use rocket::{post, State};
 
+use super::*;
 use crate::{
     config::UserlistMode,
-    db::GlobedDb,
     ip_blocker::IpBlocker,
     state::{ActiveChallenge, ServerState},
     web::{routes::check_maintenance, *},
@@ -28,7 +27,7 @@ macro_rules! get_user_ip {
             // verify if the actual peer is cloudflare
             if !IpBlocker::instance().is_allowed(&$ip) {
                 warn!("blocking unknown non-cloudflare address: {}", $ip);
-                unauthorized!("access is denied from this IP address");
+                super::responders::unauthorized_::unauthorized!("access is denied from this IP address");
             }
 
             $cfip.0.ok_or(anyhow!("failed to parse the IP header from Cloudflare"))
@@ -130,7 +129,7 @@ pub async fn challenge_start(
         }
     }
 
-    let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?;
+    let current_time = SystemTime::now();
 
     let mut should_return_existing = false;
     // check if there already is a challenge
@@ -139,7 +138,7 @@ pub async fn challenge_start(
         if challenge.account_id == aid && challenge.user_id == uid && challenge.name == aname {
             should_return_existing = true;
         } else {
-            let passed_time = current_time - challenge.started;
+            let passed_time = current_time.duration_since(challenge.started).unwrap_or_default();
             // if it hasn't expired yet, throw an error
             if passed_time.as_secs() < u64::from(state.config.challenge_expiry) {
                 trace!("rejecting start, challenge already requested: {user_ip}");

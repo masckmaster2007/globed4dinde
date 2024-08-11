@@ -1,26 +1,35 @@
 #pragma once
 
 #include <defs/geode.hpp>
+#include <asp/math/NumberCycle.hpp>
 
 #include <managers/web.hpp>
 
-class EditFeaturedLevelPopup : public geode::Popup<> {
+class EditFeaturedLevelPopup : public geode::Popup<GJGameLevel*> {
 public:
-    static constexpr float POPUP_WIDTH = 200.f;
-    static constexpr float POPUP_HEIGHT = 140.f;
+    static constexpr float POPUP_WIDTH = 340.f;
+    static constexpr float POPUP_HEIGHT = 190.f;
 
-    static EditFeaturedLevelPopup* create();
+    static EditFeaturedLevelPopup* create(GJGameLevel* level);
 
 private:
-    bool setup() override;
-    void save();
+    bool setup(GJGameLevel*) override;
+    void sendFeatureRequest();
+    int getDifficulty();
     void createDiffButton();
+    void onDiffClick(CCObject* sender);
 
     void onRequestComplete(typename WebRequestManager::Event* event);
 
-    geode::TextInput* idInput;
-    Ref<cocos2d::CCMenu> curDiffButton;
-    int currIdx = 0;
+    geode::TextInput* notesInput;
+    Ref<CCMenuItemSpriteExtra> featureButton;
+    Ref<CCMenuItemSpriteExtra> sendButton;
+    Ref<CCMenuItemSpriteExtra> curDiffButton;
+    asp::NumberCycle currIdx{0, 2};
+
+    Ref<GJGameLevel> level;
+
+    Ref<cocos2d::CCMenu> menu;
 
     WebRequestManager::Listener reqListener;
 };

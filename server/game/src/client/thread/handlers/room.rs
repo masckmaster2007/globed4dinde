@@ -1,3 +1,5 @@
+use crate::webhook::{WebhookChannel, WebhookMessage};
+
 use super::*;
 
 impl ClientThread {
@@ -13,7 +15,7 @@ impl ClientThread {
             let fail_reason: Option<&'static str> = match packet.room_name.to_str() {
                 Ok(str) => {
                     if self.game_server.state.filter.is_bad(str) {
-                        Some("Please choose a different room name")
+                        Some("Inappropriate room name. Please note that trying to bypass the filter may lead to a ban.")
                     } else {
                         None
                     }
@@ -30,6 +32,29 @@ impl ClientThread {
                 .state
                 .room_manager
                 .create_room(account_id, packet.room_name, packet.password, packet.settings);
+
+            let self_name = self.account_data.lock().name.try_to_string();
+
+            if self.game_server.bridge.has_room_webhook() {
+                if let Err(err) = self
+                    .game_server
+                    .bridge
+                    .send_webhook_messages(
+                        &[WebhookMessage::RoomCreated(
+                            room_info.id,
+                            room_info.name.try_to_string(),
+                            self_name,
+                            account_id,
+                            packet.settings.flags.is_hidden,
+                            !room_info.password.is_empty(),
+                        )],
+                        WebhookChannel::Room,
+                    )
+                    .await
+                {
+                    warn!("Failed to send webhook message (room creation): {err}");
+                }
+            }
 
             self.room_id.store(room_info.id, Ordering::Relaxed);
             room_info
@@ -117,24 +142,9 @@ impl ClientThread {
     });
 
     gs_handler!(self, handle_leave_room, LeaveRoomPacket, _packet, {
-        let account_id = gs_needauth!(self);
+        let _ = gs_needauth!(self);
 
-        let room_id = self.room_id.swap(0, Ordering::Relaxed);
-        if room_id == 0 {
-            return Ok(());
-        }
-
-        let level_id = self.level_id.load(Ordering::Relaxed);
-
-        let should_send_update = self.game_server.state.room_manager.remove_with_any(room_id, account_id, level_id);
-
-        // if we were the owner, send update packets to everyone
-        if should_send_update {
-            self.game_server.broadcast_room_info(room_id).await;
-        }
-
-        // add them to the global room
-        self.game_server.state.room_manager.get_global().manager.create_player(account_id);
+        self._remove_from_room().await;
 
         // respond with the global room list
         self._respond_with_room_list(0, false).await
@@ -160,7 +170,7 @@ impl ClientThread {
 
         self.game_server.state.room_manager.with_any(room_id, |room| {
             if room.owner == account_id {
-                room.set_settings(&packet.settings);
+                room.set_settings(packet.settings);
                 success = true;
             }
         });
@@ -203,7 +213,7 @@ impl ClientThread {
         let thread = self.game_server.get_user_by_id(packet.player);
 
         if let Some(thread) = thread {
-            let player_data = self.account_data.lock().make_preview();
+            let player_data = self.account_data.lock().make_preview(!self.privacy_settings.lock().get_hide_roles());
 
             debug!(
                 "{account_id} sent an invite to {} (room: {}, password: {})",
@@ -239,6 +249,92 @@ impl ClientThread {
 
         self.send_packet_dynamic(&pkt).await
     });
+
+    gs_handler!(self, handle_close_room, CloseRoomPacket, _packet, {
+        let account_id = gs_needauth!(self);
+
+        let room_id = self.room_id.load(Ordering::Relaxed);
+        if room_id == 0 {
+            return self._respond_with_room_list(room_id, false).await;
+        }
+
+        let players = self.game_server.state.room_manager.try_with_any(
+            room_id,
+            |room| {
+                // we can only close a room if we are the creator or if we are a mod
+                if room.owner != account_id && !self.user_role.lock().can_moderate() {
+                    return Vec::new();
+                }
+
+                let mut v = Vec::new();
+                room.manager.for_each_player(|player| {
+                    if player.account_id != account_id {
+                        v.push(player.account_id);
+                    }
+                });
+
+                v
+            },
+            Vec::new,
+        );
+
+        for player in players {
+            self.game_server.broadcast_room_kicked(player).await;
+        }
+
+        self._kicked_from_room().await
+    });
+
+    gs_handler!(self, handle_kick_room_player, KickRoomPlayerPacket, packet, {
+        let _ = gs_needauth!(self);
+
+        let room_id = self.room_id.load(Ordering::Relaxed);
+
+        if room_id == 0 {
+            return Ok(());
+        }
+
+        // check if the player is in our room
+        let has_player = self
+            .game_server
+            .state
+            .room_manager
+            .try_with_any(room_id, |room| room.has_player(packet.player), || false);
+
+        if has_player {
+            self.game_server.broadcast_room_kicked(packet.player).await;
+        }
+
+        Ok(())
+    });
+
+    pub async fn _kicked_from_room(&self) -> crate::client::Result<()> {
+        self._remove_from_room().await;
+
+        // respond with the global room list
+        self._respond_with_room_list(0, false).await
+    }
+
+    async fn _remove_from_room(&self) {
+        let account_id = self.account_id.load(Ordering::Relaxed);
+
+        let room_id = self.room_id.swap(0, Ordering::Relaxed);
+        if room_id == 0 {
+            return;
+        }
+
+        let level_id = self.level_id.load(Ordering::Relaxed);
+
+        let should_send_update = self.game_server.state.room_manager.remove_with_any(room_id, account_id, level_id);
+
+        // if we were the owner, send update packets to everyone
+        if should_send_update {
+            self.game_server.broadcast_room_info(room_id).await;
+        }
+
+        // add them to the global room
+        self.game_server.state.room_manager.get_global().manager.create_player(account_id);
+    }
 
     #[inline]
     async fn _respond_with_room_list(&self, room_id: u32, just_joined: bool) -> crate::client::Result<()> {
